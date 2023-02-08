@@ -529,11 +529,6 @@ def main(start_time_sec):
     for epoch in epochs:
         # ======================== Training ================================
 
-        if epoch == args.num_train_epochs - 2:
-            jax.profiler.start_trace("/tmp/jax_profiles")
-        if epoch == args.num_train_epochs - 1:
-            jax.profiler.stop_trace()
-
         train_start = time.time()
         train_metrics = []
 
@@ -547,6 +542,15 @@ def main(start_time_sec):
 
             train_step_progress_bar.update(1)
 
+            global_step += 1
+            if global_step >= args.max_train_steps:
+                break
+
+            if global_step == args.max_train_steps - 100:
+                jax.profiler.start_trace("/tmp/jax_profiles")
+            if global_step == args.max_train_steps - 80:
+                jax.profiler.stop_trace()
+
         train_time += time.time() - train_start
         steps_per_sec = (epoch + 1) * steps_per_epoch / train_time
         step_time_sec = 1 / steps_per_sec
@@ -559,10 +563,6 @@ def main(start_time_sec):
             clu_metrics["step_time_sec_per_device"] = step_time_sec
             clu_metrics["global_examples_per_sec"] = examples_per_sec
             clu_writer.write_scalars(epoch, clu_metrics)
-
-            global_step += 1
-            if global_step >= args.max_train_steps:
-                break
 
         train_metric = jax_utils.unreplicate(train_metric)
 
