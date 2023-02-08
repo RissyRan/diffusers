@@ -354,11 +354,10 @@ def main(start_time_sec):
 
         return examples
 
-    if jax.process_index() == 0:
-        if args.max_train_samples is not None:
-            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
-        # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
+    if args.max_train_samples is not None:
+        dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+    # Set the training transforms
+    train_dataset = dataset["train"].with_transform(preprocess_train)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
