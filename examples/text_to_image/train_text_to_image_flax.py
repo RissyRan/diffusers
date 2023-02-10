@@ -519,6 +519,7 @@ def main(start_time_sec):
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
 
     global_step = 0
+    train_time = 0
 
     # Calculate startup time
     startup_time_sec = time.time() - start_time_sec
