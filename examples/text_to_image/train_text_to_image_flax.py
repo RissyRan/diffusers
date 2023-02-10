@@ -426,7 +426,7 @@ def main(start_time_sec):
 
     # Initialize our training
     rng = jax.random.PRNGKey(args.seed)
-    train_rngs = jax.random.split(rng, jax.device_count())
+    train_rngs = jax.random.split(rng, jax.local_device_count())
     clu_writer = metric_writers.create_default_writer(args.output_dir)
 
     def train_step(state, text_encoder_params, vae_params, batch, train_rng):
