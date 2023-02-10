@@ -596,6 +596,10 @@ def main(start_time_sec):
             },
         )
 
+        param_count = sum(x.size for x in jax.tree_leaves(pipeline.params))
+        logger.info("***** Model params *****")
+        logger.info(f"num of params: {param_count}")
+
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
