@@ -597,7 +597,7 @@ def main(start_time_sec):
             },
         )
 
-        param_count = sum(x.size for x in jax.tree_leaves(pipeline.params))
+        param_count = sum(x.size for x in jax.tree_leaves(text_encoder_params)) + sum(x.size for x in jax.tree_leaves(vae_params)) + sum(x.size for x in jax.tree_leaves(state.params)) + sum(x.size for x in jax.tree_leaves(safety_checker.params))
         logger.info("***** Model params *****")
         logger.info(f"num of params: {param_count}")
 
