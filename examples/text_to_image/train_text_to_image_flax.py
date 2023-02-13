@@ -388,6 +388,7 @@ def main(start_time_sec):
 
     # Load models and create wrapper for stable diffusion
     tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
+    logger.info(f"....tokenizer.model_max_length: {tokenizer.model_max_length}....")
     text_encoder = FlaxCLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", dtype=weight_dtype
     )
