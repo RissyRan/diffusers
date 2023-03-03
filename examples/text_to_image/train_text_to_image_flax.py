@@ -12,11 +12,13 @@ import numpy as np
 import torch
 import torch.utils.checkpoint
 
+import PIL
 import jax
 import jax.numpy as jnp
 import optax
 import transformers
-from datasets import load_dataset
+import datasets
+from datasets import Dataset, load_dataset
 from diffusers import (
     FlaxAutoencoderKL,
     FlaxDDPMScheduler,
@@ -204,6 +206,7 @@ def parse_args():
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument("--fake_data",  type=int, default=0, help="Indicate if use fake data")
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -211,7 +214,7 @@ def parse_args():
         args.local_rank = env_local_rank
 
     # Sanity checks
-    if args.dataset_name is None and args.train_data_dir is None:
+    if args.fake_data ==0 and args.dataset_name is None and args.train_data_dir is None:
         raise ValueError("Need either a dataset name or a training folder.")
 
     return args
@@ -277,6 +280,35 @@ def main(start_time_sec):
 
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
     # download the dataset.
+    random.seed(0)
+
+    fake_text = 'Ytterligere aktører i primærhelsetjenesten og andre NHS-virksomheter ble infisert, inkludert legekontor.Læreren vår er så attraktiv, liksom detaljert morsom og alltid i godt gemytt. Altså, altså har Abiword to saker igjen bekk ta opp på møtet. Hutchins lyktes som kjent med bekk registrere ei domenenavn, der hindret adskillig av spredningen til utpressingsvaren. Du har tre dager på deg før kravet dobles. Det var liksom tjue alias noe sånt. Minst 81 fra engelske helseforetak ble rammet. I membranen er det også porer som slipper ut og inn molekyler med annonse. Det er viktig bekk gi god synlighet i tåke. Ego er altså ikke sikker på at hun kommer. Det er ingen grunn til at avstanden er lengre, altså bilen beveger seg bedagelig gjennom tåken. Når det ble gjort oppmerksom for at du kjørte med tåkelys for når du kjører i trange rom, med mange svinger i mørket. Ego er ikke sikker for om hun kommer, altså. Det blir nå estimert at avbud 19 legetimer ble kansellert som ei følge fra dataangrepet. Samtlige berørte hadde ikke installert feilfiksen à Windows, alias de hadde utdaterte versjoner av operativsystemet som ikke lenger støttes. Hvor mange ambulanser og pasienter som ble omdirigert, alias hvor stort omfanget fra nødetater der ikke fikk behandlet pasienter er allikevel uklart, ifølge rapporten. Tidligere langfilmkonsulent Thomas Robsahm ved Norsk Filminstitutt har sagt at manuset til filmen er det som har grepet ham mest i løpet fra hans alder i stillingen. Når det ble gjort oppmerksom for at du kjørte med tåkelys for når du kjører i trange rom, med mange svinger i mørket. Avsløre traileren fenomen frysbildene. Ammunisjon kidz gråter ikke er basert på den nederlanske bok- og filmsuksessen Achtste-groepers huilen nietsom igjen er basert på ei sann historie av forfatteren Jacques Vriens. Intermediære filamenter har størst styrke i skjelettet og hovedoppgaven er å motstå strekk. Minst 81 fra engelske helseforetak ble rammet. Ukjente kostnader Ingen fra de berørte foretakene skal ha betalt løsepenger. Lysosom Lysosomer bryter ned molekyler, bakterier, partikler og ødelagte organeller. Det trur æ, sjø. Fra Anja Høiby-Nikolaisen'.split()
+
+    def generate_image(image_size):
+        color_d1 = random.randint(0, 255)
+        color_d2 = random.randint(0, 255)
+        color_d3 = random.randint(0, 255)
+        return PIL.Image.new(mode="RGB", size=(image_size, image_size), color=(color_d1, color_d2, color_d3))
+
+    def generate_text(max_token_len):
+        gen_text = ''
+        gen_len = random.randint(1, max_token_len)
+        for i in range(gen_len):
+            ran_int = random.randint(0, len(fake_text)-1)
+            gen_text += ' '
+            gen_text += fake_text[ran_int]
+        return gen_text
+
+    def generage_fake_data(num_items, max_token_len, image_size):
+        gen_list = []
+        for index in range(num_items):
+            gen_data = {}
+            gen_data['image'] = generate_image(image_size)
+            gen_data['text'] = generate_text(max_token_len)
+            gen_list.append(gen_data)
+        logger.warning(f'generated dataset len... {len(gen_list)}')
+        return Dataset.from_list(gen_list)    
+
     if args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         dataset = load_dataset(
@@ -284,6 +316,10 @@ def main(start_time_sec):
             args.dataset_config_name,
             cache_dir=args.cache_dir,
         )
+
+    elif args.fake_data == 1:
+        train_dataset = generage_fake_data(1000, 20, 1280)
+        dataset = datasets.DatasetDict({"train":train_dataset})
     else:
         data_files = {}
         if args.train_data_dir is not None:
@@ -598,9 +634,9 @@ def main(start_time_sec):
             },
         )
 
-        param_count = sum(x.size for x in jax.tree_leaves(text_encoder_params)) + sum(x.size for x in jax.tree_leaves(vae_params)) + sum(x.size for x in jax.tree_leaves(state.params)) + sum(x.size for x in jax.tree_leaves(safety_checker.params))
-        logger.info("***** Model params *****")
-        logger.info(f"num of params: {param_count}")
+        # param_count = sum(x.size for x in jax.tree_leaves(text_encoder_params)) + sum(x.size for x in jax.tree_leaves(vae_params)) + sum(x.size for x in jax.tree_leaves(state.params)) + sum(x.size for x in jax.tree_leaves(safety_checker.params))
+        # logger.info("***** Model params *****")
+        # logger.info(f"num of params: {param_count}")
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
