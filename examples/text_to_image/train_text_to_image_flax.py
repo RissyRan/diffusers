@@ -6,6 +6,7 @@ import time
 import random
 from pathlib import Path
 
+import PIL
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -13,7 +14,7 @@ import optax
 import torch
 import torch.utils.checkpoint
 import transformers
-from datasets import load_dataset
+from datasets import load_dataset, Dataset, DatasetDict
 from flax import jax_utils
 from flax.training import train_state
 from flax.training.common_utils import shard
@@ -240,6 +241,10 @@ def parse_args():
                       type=int,
                       default=-1,
                       help="For distributed training: local_rank")
+  parser.add_argument("--fake_data",
+                      type=int,
+                      default=0,
+                      help="Indicate if use fake data")
 
   args = parser.parse_args()
   env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -247,7 +252,7 @@ def parse_args():
     args.local_rank = env_local_rank
 
   # Sanity checks
-  if args.dataset_name is None and args.train_data_dir is None:
+  if args.fake_data == 0 and args.dataset_name is None and args.train_data_dir is None:
     raise ValueError("Need either a dataset name or a training folder.")
 
   return args
@@ -296,6 +301,34 @@ def main(start_time_sec):
 
   # In distributed training, the load_dataset function guarantees that only one local process can concurrently
   # download the dataset.
+
+  fake_text = 'Ytterligere aktører i primærhelsetjenesten og andre NHS-virksomheter ble infisert, inkludert legekontor.Læreren vår er så attraktiv, liksom detaljert morsom og alltid i godt gemytt. Altså, altså har Abiword to saker igjen bekk ta opp på møtet. Hutchins lyktes som kjent med bekk registrere ei domenenavn, der hindret adskillig av spredningen til utpressingsvaren. Du har tre dager på deg før kravet dobles. Det var liksom tjue alias noe sånt. Minst 81 fra engelske helseforetak ble rammet. I membranen er det også porer som slipper ut og inn molekyler med annonse. Det er viktig bekk gi god synlighet i tåke. Ego er altså ikke sikker på at hun kommer. Det er ingen grunn til at avstanden er lengre, altså bilen beveger seg bedagelig gjennom tåken. Når det ble gjort oppmerksom for at du kjørte med tåkelys for når du kjører i trange rom, med mange svinger i mørket. Ego er ikke sikker for om hun kommer, altså. Det blir nå estimert at avbud 19 legetimer ble kansellert som ei følge fra dataangrepet. Samtlige berørte hadde ikke installert feilfiksen à Windows, alias de hadde utdaterte versjoner av operativsystemet som ikke lenger støttes. Hvor mange ambulanser og pasienter som ble omdirigert, alias hvor stort omfanget fra nødetater der ikke fikk behandlet pasienter er allikevel uklart, ifølge rapporten. Tidligere langfilmkonsulent Thomas Robsahm ved Norsk Filminstitutt har sagt at manuset til filmen er det som har grepet ham mest i løpet fra hans alder i stillingen. Når det ble gjort oppmerksom for at du kjørte med tåkelys for når du kjører i trange rom, med mange svinger i mørket. Avsløre traileren fenomen frysbildene. Ammunisjon kidz gråter ikke er basert på den nederlanske bok- og filmsuksessen Achtste-groepers huilen nietsom igjen er basert på ei sann historie av forfatteren Jacques Vriens. Intermediære filamenter har størst styrke i skjelettet og hovedoppgaven er å motstå strekk. Minst 81 fra engelske helseforetak ble rammet. Ukjente kostnader Ingen fra de berørte foretakene skal ha betalt løsepenger. Lysosom Lysosomer bryter ned molekyler, bakterier, partikler og ødelagte organeller. Det trur æ, sjø. Fra Anja Høiby-Nikolaisen'.split()
+
+  def generate_image(image_size):
+    color_d1 = random.randint(0, 255)
+    color_d2 = random.randint(0, 255)
+    color_d3 = random.randint(0, 255)
+    return PIL.Image.new(mode="RGB", size=(image_size, image_size), color=(color_d1, color_d2, color_d3))
+
+  def generate_text(max_token_len):
+    gen_text = ''
+    gen_len = random.randint(1, max_token_len)
+    for i in range(gen_len):
+      ran_int = random.randint(0, len(fake_text)-1)
+      gen_text += ' '
+      gen_text += fake_text[ran_int]
+    return gen_text
+
+  def generage_fake_data(num_items, max_token_len, image_size):
+    gen_list = []
+    for index in range(num_items):
+      gen_data = {}
+      gen_data['image'] = generate_image(image_size)
+      gen_data['text'] = generate_text(max_token_len)
+      gen_list.append(gen_data)
+    logger.warning(f'== generated dataset len: {len(gen_list)} ==')
+    return Dataset.from_list(gen_list)
+
   if args.dataset_name is not None:
     # Downloading and loading a dataset from the hub.
     dataset = load_dataset(
@@ -303,6 +336,9 @@ def main(start_time_sec):
         args.dataset_config_name,
         cache_dir=args.cache_dir,
     )
+  elif args.fake_data == 1:
+      train_dataset = generage_fake_data(1000, 20, 1280)
+      dataset = DatasetDict({"train": train_dataset})
   else:
     data_files = {}
     if args.train_data_dir is not None:
@@ -423,6 +459,7 @@ def main(start_time_sec):
                                             from_pt=True,
                                             revision=args.revision,
                                             subfolder="tokenizer")
+  logger.info(f"== tokenizer.model_max_length: {tokenizer.model_max_length} ==")
   text_encoder = FlaxCLIPTextModel.from_pretrained(
       args.pretrained_model_name_or_path,
       from_pt=True,
@@ -615,18 +652,18 @@ def main(start_time_sec):
       if global_step == args.max_train_steps - 80:
         jax.profiler.stop_trace()
 
-      train_time += time.time() - train_start
-      steps_per_sec = (epoch + 1) * steps_per_epoch / train_time
-      step_time_sec = 1 / steps_per_sec
-      examples_per_sec = steps_per_sec * total_train_batch_size
+    train_time += time.time() - train_start
+    steps_per_sec = (epoch + 1) * steps_per_epoch / train_time
+    step_time_sec = 1 / steps_per_sec
+    examples_per_sec = steps_per_sec * total_train_batch_size
 
-      # Save metrics
-      if jax.process_index() == 0:
-        clu_metrics = {}
-        clu_metrics["steps_per_sec_per_device"] = steps_per_sec
-        clu_metrics["step_time_sec_per_device"] = step_time_sec
-        clu_metrics["global_examples_per_sec"] = examples_per_sec
-        clu_writer.write_scalars(epoch, clu_metrics)
+    # Save metrics
+    if jax.process_index() == 0:
+      clu_metrics = {}
+      clu_metrics["steps_per_sec_per_device"] = steps_per_sec
+      clu_metrics["step_time_sec_per_device"] = step_time_sec
+      clu_metrics["global_examples_per_sec"] = examples_per_sec
+      clu_writer.write_scalars(epoch, clu_metrics)
 
     train_metric = jax_utils.unreplicate(train_metric)
 
